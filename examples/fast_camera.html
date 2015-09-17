@@ -1,0 +1,220 @@
+<!doctype html>
+
+<html>
+<head>
+  <title>tracking.js -  feature detector with camera</title>
+
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="assets/demo.css">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
+
+  <script src="../build/tracking-min.js"></script>
+  <script src="../dat-gui/build/dat.gui.min.js"></script>
+  <script src="assets/stats.min.js"></script>
+  <script src="../node_modules/gulp-jsdoc/node_modules/ink-docstrap/template/static/scripts/jquery.min.js"></script>
+
+  <style>
+  #video {
+    position: absolute;
+    top: -1000px;
+  }
+
+  #canvas {
+    left: 50%;
+    top: 50%;
+    margin-left: -200px;
+    margin-top: -150px;
+    position: absolute;
+  }
+  </style>
+</head>
+<body>
+  <div class="demo-title">
+    <p><a href="http://trackingjs.com" target="_parent">tracking.js</a> － display detected features</p>
+  </div>
+
+  <div class="demo-frame">
+    <div class="demo-container">
+      <button type="button" id="calibrate" class="btn btn-info">Calibrate</button>
+
+      <video id="video" width="400" height="300" preload autoplay loop muted></video>
+      <canvas id="canvas" width="400" height="300"></canvas>
+    </div>
+  </div>
+
+  <script>
+    var canvas = document.getElementById('canvas');
+    var context = canvas.getContext('2d');
+    var matrix = [];
+    var gcorners = [];
+
+    var FastTracker = function() {
+      FastTracker.base(this, 'constructor');
+    };
+    tracking.inherits(FastTracker, tracking.Tracker);
+
+    tracking.Fast.THRESHOLD = 2;
+    FastTracker.prototype.threshold = tracking.Fast.THRESHOLD;
+
+    FastTracker.prototype.track = function(pixels, width, height) {
+      stats.begin();
+      var gray = tracking.Image.grayscale(pixels, width, height);
+      var corners = tracking.Fast.findCorners(gray, width, height);
+      stats.end();
+
+      this.emit('track', {
+        data: corners
+      });
+    };
+
+    var tracker = new FastTracker();
+
+    tracker.on('track', function(event) {
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      var corners = event.data;
+        gcorners = corners;
+      for (var i = 0; i < corners.length; i += 2) {
+        matrix = corners;
+        context.fillStyle = '#f00';
+        context.fillRect(corners[i], corners[i + 1], 2, 2);
+      }
+    });
+
+    tracking.track('#video', tracker, { camera: true });
+
+    // GUI Controllers
+    var gui = new dat.GUI();
+
+    gui.add(tracker, 'threshold', 1, 100).onChange(function(value) {
+      tracking.Fast.THRESHOLD = value;
+    });
+
+    $('#calibrate').click(function(){
+        console.log(matrix);
+        console.log(findWidth(gcorners));
+    });
+
+    var findWidth = function(corners){
+        var features = new Array([]);
+        var paper = new Array([]);
+
+        console.log(canvas);
+
+        for (var i = -2; i < canvas.height; i++){
+            features[i] = [];
+            paper[i] = [];
+        }
+
+        for (var i = 0; i < corners.length; i += 2) {
+            if (features[corners[i]] === undefined)
+                features[corners[i]] = [];
+            if (i < canvas.height-1 && features[corners[i]+1] === undefined)
+                features[corners[i]+1] = [];
+            if (i > 0 && features[corners[i]-1] === undefined)
+                features[corners[i]-1] = [];
+            if (i > 0 && features[corners[i]-2] === undefined)
+                features[corners[i]-2] = [];
+            if (i > 0 && features[corners[i]+1] === undefined)
+                features[corners[i]+1] = [];
+            if (i > 0 && features[corners[i]+2] === undefined)
+                features[corners[i]+2] = [];
+
+            //1
+            features[corners[i]][corners[i+1]] = 1
+
+            //8
+            features[corners[i]+1][corners[i+1]] = 1
+            features[corners[i]-1][corners[i+1]] = 1
+            features[corners[i]][corners[i+1]+1] = 1
+            features[corners[i]][corners[i+1]-1] = 1
+            features[corners[i]+1][corners[i+1]+1] = 1
+            features[corners[i]+1][corners[i+1]-1] = 1
+            features[corners[i]-1][corners[i+1]+1] = 1
+            features[corners[i]-1][corners[i+1]-1] = 1
+
+            //16
+            features[corners[i]+2][corners[i+1]] = 1
+            features[corners[i]-2][corners[i+1]] = 1
+            features[corners[i]+2][corners[i+1]+1] = 1
+            features[corners[i]-2][corners[i+1]+1] = 1
+            features[corners[i]+2][corners[i+1]-1] = 1
+            features[corners[i]-2][corners[i+1]-1] = 1
+            features[corners[i]+2][corners[i+1]-2] = 1
+            features[corners[i]+2][corners[i+1]+2] = 1
+            features[corners[i]-2][corners[i+1]+2] = 1
+            features[corners[i]-2][corners[i+1]-2] = 1
+
+            features[corners[i]][corners[i+1]+2] = 1
+            features[corners[i]][corners[i+1]-2] = 1
+            features[corners[i]+1][corners[i+1]+2] = 1
+            features[corners[i]+1][corners[i+1]-2] = 1
+            features[corners[i]-1][corners[i+1]+2] = 1
+            features[corners[i]-1][corners[i+1]-2] = 1
+         }
+
+        for (var i = 0; i < canvas.height; i++){
+            paper[i][0] = 0;
+        }
+
+        for (var i = 0; i < canvas.width; i++){
+            paper[0][i] = 0;
+        }
+
+        for (var i = 1; i < canvas.height; i++){
+            for (var j = 1; j < canvas.width; j++){
+                if (features[i][j] === 1 ||
+                        features[i+1][j] === 1 ||
+                        features[i][j+1] === 1 ||
+                        features[i+1][j+1] === 1 ||
+                        features[i-1][j] === 1 ||
+                        features[i][j-1] === 1 ||
+                        features[i-1][j-1] === 1 ||
+                        features[i-1][j+1] === 1 ||
+                        features[i+1][j-1] === 1 ||
+                        features[i+2][j] === 1 ||
+                        features[i+2][j+1] === 1 ||
+                        features[i+2][j+2] === 1 ||
+                        features[i+2][j-1] === 1 ||
+                        features[i+2][j-2] === 1 ||
+                        features[i-2][j] === 1 ||
+                        features[i-2][j+1] === 1 ||
+                        features[i-2][j+2] === 1 ||
+                        features[i-2][j-1] === 1 ||
+                        features[i-2][j-2] === 1 ||
+                        features[i+1][j+2] === 1 ||
+                        features[i-1][j+2] === 1 ||
+                        features[i+1][j-2] === 1 ||
+                        features[i-1][j-2] === 1 ||
+                        features[i][j+2] === 1 ||
+                        features[i][j-2] === 1
+
+                ) {
+                    paper[i][j] = 0;
+                }
+                else{
+                    paper[i][j] = paper[i][j-1] + 1;
+                }
+            }
+        }
+
+        console.log(paper);
+
+        return max(paper);
+    };
+
+      var max  = function(matrix){
+          var maximum = 0;
+
+          for (var i = 0; i < canvas.height; i++){
+              for (var j = 0; j < canvas.width; j++){
+                  if (matrix[i][j] > maximum)
+                    maximum = matrix[i][j];
+              }
+          }
+
+          return maximum;
+      };
+
+  </script>
+</body>
+</html>
